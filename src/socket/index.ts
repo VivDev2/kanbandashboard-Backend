@@ -1,8 +1,8 @@
-// server/src/socket/index.ts
+// server/src/socket/index.ts (Auth only version)
 import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import User from '../models/User';
-import { SocketUser } from '../types';
+import { SocketUser } from '../types/';
 
 interface CustomSocket extends Socket {
   user?: SocketUser;
@@ -11,6 +11,7 @@ interface CustomSocket extends Socket {
 }
 
 const initializeSocket = (io: Server) => {
+  // Authentication middleware
   io.use(async (socket: CustomSocket, next) => {
     try {
       const token = socket.handshake.auth.token;
@@ -39,47 +40,20 @@ const initializeSocket = (io: Server) => {
     }
   });
 
+  // Connection handler with room joining
   io.on('connection', (socket: CustomSocket) => {
     console.log(`User ${socket.user?.name} connected with role: ${socket.role}`);
     
-    // Join room based on role
+    // Join room based on user ID for direct notifications
+    if (socket.userId) {
+      socket.join(socket.userId);
+      console.log(`User ${socket.userId} joined their personal room`);
+    }
+    
+    // Join room based on role for role-specific notifications
     if (socket.role) {
       socket.join(socket.role);
     }
-    
-    // Admin specific events
-    socket.on('admin:requestAction', (data) => {
-      // Broadcast to all users
-      socket.to('user').emit('user:actionRequired', data);
-    });
-    
-    socket.on('admin:updateDashboard', (data) => {
-      io.emit('dashboard:update', data);
-    });
-    
-    // User specific events
-    socket.on('user:requestApproval', (data) => {
-      // Send to all admins
-      socket.to('admin').emit('admin:approvalRequest', {
-        ...data,
-        userId: socket.userId,
-        userName: socket.user?.name
-      });
-    });
-    
-    socket.on('user:updateStatus', (data) => {
-      // Notify admins of status change
-      socket.to('admin').emit('admin:userStatusUpdate', {
-        ...data,
-        userId: socket.userId,
-        userName: socket.user?.name
-      });
-    });
-    
-    // Real-time sync events
-    socket.on('sync:request', (data) => {
-      io.emit('sync:update', data);
-    });
     
     socket.on('disconnect', () => {
       console.log(`User ${socket.user?.name} disconnected`);
