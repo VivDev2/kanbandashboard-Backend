@@ -1,3 +1,4 @@
+// server/src/models/User.ts
 import { Schema, model, Document, Types } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
@@ -9,6 +10,7 @@ export interface IUser extends Document {
   password: string;
   role: 'admin' | 'user';
   isActive: boolean;
+  team?: Types.ObjectId; // Add this if you want to reference team directly on user
   permissions?: string[];
   comparePassword(password: string): Promise<boolean>;
 }
@@ -22,9 +24,29 @@ const userSchema = new Schema<IUser>({
   permissions: { type: [String], default: [] },
 }, { timestamps: true });
 
-// Password compare method
+// Hash password before saving
+userSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) {
+    return next();
+  }
+  
+  try {
+    const salt = await bcrypt.genSalt(12);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (error) {
+    next(error as Error);
+  }
+});
+
+// Password comparison method
 userSchema.methods.comparePassword = async function(password: string): Promise<boolean> {
-  return bcrypt.compare(password, this.password);
+  try {
+    return await bcrypt.compare(password, this.password);
+  } catch (error) {
+    console.error('Password comparison error:', error);
+    return false;
+  }
 };
 
 const User = model<IUser>('User', userSchema);

@@ -14,20 +14,35 @@ router.post('/login', async (req: Request, res: Response) => {
   const { email, password } = req.body;
 
   try {
-    const user = await User.findOne({ email }) as IUser | null;
+    // Find user by email (password is selected for comparison)
+    const user = await User.findOne({ email, isActive: true }).select('+password') as IUser | null;
 
     if (!user) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ 
+        success: false,
+        message: 'Invalid credentials' 
+      });
     }
 
+    // Compare password (this will use the hashed password from DB)
     const isMatch = await user.comparePassword(password);
+    
     if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ 
+        success: false,
+        message: 'Invalid credentials' 
+      });
     }
 
-    const token = jwt.sign({ id: user._id.toString(), role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: user._id.toString(), role: user.role },
+      JWT_SECRET, 
+      { expiresIn: '7d' }
+    );
 
     return res.json({
+      success: true,
       token,
       user: {
         id: user._id.toString(),
@@ -39,7 +54,10 @@ router.post('/login', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ 
+      success: false,
+      message: 'Server error during login' 
+    });
   }
 });
 
@@ -51,30 +69,35 @@ router.post('/register', async (req: Request, res: Response) => {
     // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(400).json({ message: 'User already exists' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'User already exists' 
+      });
     }
     
-    // Create new user
+    // Create new user - the password will be hashed automatically by the pre-save hook
     const user = new User({
       name,
       email,
-      password,
+      password, // This is the plain password - mongoose will hash it
       role
     });
     
+    // Save user - this triggers the pre-save hook
     await user.save();
     
     // Generate JWT token
     const token = jwt.sign(
-      { id: user.id, role: user.role },
+      { id: user._id.toString(), role: user.role },
       JWT_SECRET,
-      { expiresIn: '5d' } 
+      { expiresIn: '7d' } 
     );
     
     return res.status(201).json({
+      success: true,
       token,
       user: {
-        id: user.id,
+        id: user._id.toString(),
         name: user.name,
         email: user.email,
         role: user.role
@@ -82,7 +105,20 @@ router.post('/register', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Registration error:', error);
-    return res.status(500).json({ message: 'Server error' });
+    
+    // Handle specific MongoDB errors
+    if (error instanceof Error && error.name === 'ValidationError') {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Validation error',
+        errors: error.message
+      });
+    }
+    
+    return res.status(500).json({ 
+      success: false,
+      message: 'Server error during registration' 
+    });
   }
 });
 

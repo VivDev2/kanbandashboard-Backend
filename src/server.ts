@@ -12,6 +12,10 @@ import jwt from 'jsonwebtoken';
 import User from './models/User';
 import authRoutes from './routes/auth';
 import taskRoutes from './routes/tasks';
+import teamRoutes from './routes/teams';
+import userRoutes from './routes/users';
+import leaveRoutes from './routes/leaves' // Add this import
+import ProjectRoutes from './routes/projects'
 import initializeSocket from './socket';
 
 // Load environment variables
@@ -54,7 +58,10 @@ const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_key_change_this_in
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/tasks', taskRoutes);
-
+app.use('/api/teams', teamRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/leaves', leaveRoutes);
+app.use('/api/projects', ProjectRoutes);
 // Health check
 app.get('/api/health', (req, res) => {
   return res.json({ 

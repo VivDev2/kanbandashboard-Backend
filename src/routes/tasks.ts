@@ -2,8 +2,9 @@
 import express, { Request, Response } from 'express';
 import Task from '../models/Task';
 import { protect } from '../middleware/auth';
-import { authorize} from '../middleware/authorize'
+import { authorize } from '../middleware/authorize';
 import User from '../models/User';
+import Project from '../models/Project';
 import { AuthRequest } from '../types';
 import { io } from '../server';
 import mongoose from 'mongoose';
@@ -35,12 +36,14 @@ router.get('/', protect, async (req: AuthRequest, res: Response) => {
       tasks = await Task.find()
         .populate('assignedTo', 'name email')
         .populate('assignedBy', 'name email')
+        .populate('projectId', 'name')
         .sort({ createdAt: -1 });
     } else {
       // User can see tasks assigned to them
       tasks = await Task.find({ assignedTo: user._id })
         .populate('assignedTo', 'name email')
         .populate('assignedBy', 'name email')
+        .populate('projectId', 'name')
         .sort({ createdAt: -1 });
     }
 
@@ -63,7 +66,8 @@ router.get('/:id', protect, async (req: Request, res: Response) => {
 
     const task = await Task.findById(taskId)
       .populate('assignedTo', 'name email')
-      .populate('assignedBy', 'name email');
+      .populate('assignedBy', 'name email')
+      .populate('projectId', 'name');
 
     if (!task) {
       return res.status(404).json({ message: 'Task not found' });
@@ -101,7 +105,7 @@ router.get('/:id', protect, async (req: Request, res: Response) => {
 // Create task (admin only)
 router.post('/', protect, authorize('admin'), async (req: AuthRequest, res: Response) => {
   try {
-    const { title, description, priority, assignedTo, dueDate, status } = req.body;
+    const { title, description, priority, assignedTo, dueDate, status, projectId } = req.body;
     const user = req.user;
 
     if (!user) {
@@ -119,6 +123,18 @@ router.post('/', protect, authorize('admin'), async (req: AuthRequest, res: Resp
       return res.status(400).json({ message: 'One or more assigned users do not exist' });
     }
 
+    // Validate projectId if provided
+    if (projectId) {
+      if (!mongoose.Types.ObjectId.isValid(projectId)) {
+        return res.status(400).json({ message: 'Invalid project ID format' });
+      }
+      
+      const project = await Project.findById(projectId);
+      if (!project) {
+        return res.status(404).json({ message: 'Project not found' });
+      }
+    }
+
     const task = new Task({
       title,
       description,
@@ -126,7 +142,8 @@ router.post('/', protect, authorize('admin'), async (req: AuthRequest, res: Resp
       status: status || 'todo',
       assignedTo,
       assignedBy: user._id,
-      dueDate
+      dueDate,
+      projectId 
     });
 
     await task.save();
@@ -134,6 +151,7 @@ router.post('/', protect, authorize('admin'), async (req: AuthRequest, res: Resp
     // Populate the task before sending
     await task.populate('assignedTo', 'name email');
     await task.populate('assignedBy', 'name email');
+    await task.populate('projectId', 'name');
 
     // Emit task created event to assigned users
     task.assignedTo.forEach((userId: any) => {
@@ -154,7 +172,7 @@ router.post('/', protect, authorize('admin'), async (req: AuthRequest, res: Resp
 router.put('/:id', protect, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { title, description, status, priority, assignedTo, dueDate } = req.body;
+    const { title, description, status, priority, assignedTo, dueDate, projectId } = req.body;
     const user = req.user;
 
     // Validate ID
@@ -193,6 +211,23 @@ router.put('/:id', protect, async (req: AuthRequest, res: Response) => {
       }
     }
 
+    // Validate projectId if provided
+    if (projectId !== undefined) {
+      if (projectId) {
+        if (!mongoose.Types.ObjectId.isValid(projectId)) {
+          return res.status(400).json({ message: 'Invalid project ID format' });
+        }
+        
+        const project = await Project.findById(projectId);
+        if (!project) {
+          return res.status(404).json({ message: 'Project not found' });
+        }
+      } else {
+        // If projectId is explicitly set to null/undefined, clear it
+        task.projectId = undefined;
+      }
+    }
+
     // Store original assignedTo for socket emission
     const originalAssignedTo = [...task.assignedTo];
 
@@ -202,6 +237,7 @@ router.put('/:id', protect, async (req: AuthRequest, res: Response) => {
     if (status !== undefined) task.status = status;
     if (priority !== undefined) task.priority = priority;
     if (dueDate !== undefined) task.dueDate = dueDate;
+    if (projectId !== undefined) task.projectId = projectId ? new mongoose.Types.ObjectId(projectId) : undefined;
     
     if (assignedTo !== undefined) {
       // Validate assigned users exist
@@ -217,6 +253,7 @@ router.put('/:id', protect, async (req: AuthRequest, res: Response) => {
     // Populate updated task
     await task.populate('assignedTo', 'name email');
     await task.populate('assignedBy', 'name email');
+    await task.populate('projectId', 'name');
 
     // Notify all assigned users about the update
     // Notify previous assigned users
