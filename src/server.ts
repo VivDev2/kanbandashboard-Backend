@@ -30,6 +30,7 @@ const io = new Server(server, {
   cors: {
     origin: [
       process.env.CLIENT_URL || "http://localhost:3000",
+      "https://boardforentend.onrender.com",
       "http://localhost:5173", // Add your frontend port
       "http://localhost:3000"  // Keep the original
     ],
@@ -43,6 +44,7 @@ app.use(helmet());
 app.use(cors({
   origin: [
     process.env.CLIENT_URL || "http://localhost:3000",
+    "https://boardforentend.onrender.com",
     "http://localhost:5173", // Add your frontend port
     "http://localhost:3000"  // Keep the original
   ],
