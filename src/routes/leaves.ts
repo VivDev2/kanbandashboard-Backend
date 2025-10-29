@@ -21,6 +21,9 @@ router.post('/', protect, async (req: AuthRequest, res: Response) => {
     // Validate dates
     const start = new Date(startDate);
     const end = new Date(endDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Set time to 00:00:00.000
+
     
     if (start >= end) {
       return res.status(400).json({ 
@@ -29,7 +32,7 @@ router.post('/', protect, async (req: AuthRequest, res: Response) => {
       });
     }
 
-    if (start < new Date()) {
+    if (start < today) {
       return res.status(400).json({ 
         success: false, 
         message: 'Start date cannot be in the past' 
